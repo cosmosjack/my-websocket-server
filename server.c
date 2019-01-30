@@ -217,8 +217,10 @@ void umask(char *data,int len,char *mask)
 
 int send_frame_head(int fd,frame_head* head)
 {
-    char *response_head;
-    int head_length = 0;
+    char *response_head; //声明 返回头部
+    int head_length = 0; //返回头部的初始长度 0
+    head->payload_length = 28;
+    printf("payload_length长度:%d\n",head->payload_length);
     if(head->payload_length<126)
     {
         response_head = (char*)malloc(2);
@@ -226,7 +228,7 @@ int send_frame_head(int fd,frame_head* head)
         response_head[1] = head->payload_length;
         head_length = 2;
     }
-    else if (head->payload_length<0xFFFF)
+    else if (head->payload_length<0xFFFF) //65535
     {
         response_head = (char*)malloc(4);
         response_head[0] = 0x81;
@@ -238,7 +240,7 @@ int send_frame_head(int fd,frame_head* head)
     else
     {
         //no code
-        response_head = (char*)malloc(12);
+        response_head = (char*)malloc(12); //更大
 //        response_head[0] = 0x81;
 //        response_head[1] = 127;
 //        response_head[2] = (head->payload_length >> 8 & 0xFF);
@@ -246,7 +248,9 @@ int send_frame_head(int fd,frame_head* head)
         head_length = 12;
     }
 
-    if(write(fd,response_head,head_length)<=0)
+    printf("response_head内容是:%s\n",response_head);
+
+    if(write(fd,response_head,head_length)<=0) //发送 整理好的 返回头部数据
     {
         perror("write head");
         return -1;
@@ -276,34 +280,58 @@ int wait_client(int listen_socket)
 void hanld_client(int ser_fd, int conn)
 {
     shakehands(conn);
+    int s;
 
     int count = 10;
-    while (count--)
+    while (count--) // 为什么要加 while
     {
-    frame_head head;
-    int rul = recv_frame_head(conn,&head);
+    frame_head head;//这里就是声明 head的意思  head将会拥有和 frame_head 一样的属性
+    s = sizeof(head);
+    printf("head的长度是%d\n",s);
+    int rul = recv_frame_head(conn,&head);//整理 接收的数据到 &head 中去  ,如果整理失败 则返回 -1  //这里应该是进程不结束 则会一直 读取 接受过来的数据
     if(rul < 0)
         break;
     printf("fin=%d\nopcode=0x%X\nmask=%d\npayload_len=%llu\n",head.fin,head.opcode,head.mask,head.payload_length);
     //echo head
-    send_frame_head(conn,&head);
+    send_frame_head(conn,&head); //向客户端 发送 response 数据 发送正确后 才可以继续 发送数据
     //read payload data
-    char payload_data[1024] = {0};
+    char payload_data[1024] = {0}; //声明一个将要 存储发送数据的变量
+    char payload_test[] = "{\"code\":200,\"msg\":\"success\"}"; //单独定义一个测试 的数据
+
+//    if (write(conn,payload_test,rul)<=0){
+//        perror("write data_test");
+//    }
     int size = 0;
     do {
                 int rul;
-                rul = read(conn,payload_data,1024);
+                rul = read(conn,payload_data,1024);//读取 从客户端发送过来的数据 hello jack 存入 payload_data
+                printf("rul的长度是:%d\n",rul);
                 if (rul<=0)
                     break;
                 size+=rul;
-
+                printf("size当前是:%d\n",size);
                 umask(payload_data,size,head.masking_key);
-                printf("recive:%s",payload_data);
-
+                printf("recive内容是:%s\n",payload_data);
+                printf("rul长度是:%d\n",rul);
+                printf("head.payload_length长度为%d\n",head.payload_length);
                 //echo data
-                if (write(conn,payload_data,rul)<=0)
+                if (write(conn,payload_test,28)<=0)
                     break;
-            }while(size<head.payload_length);
+
+            }while(size<rul); // 这里的 head.payload_length = sizeof(hello jack) = 10
+
+
+     /* 单独发送数据 start */
+     /*int i = 0;
+     do {
+        if (write(conn,payload_test,rul)<=0)
+            printf("不能发送");
+            break;
+     }while(i<5);*/
+     /* 单独发送数据 end */
+
+            printf("\n-----------\n");
+            printf("data_test:%s",payload_data);
             printf("\n-----------\n");
     }
     close(conn);
